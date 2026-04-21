@@ -38,6 +38,9 @@ export default function TirupatiDashboard() {
   // GPS States
   const [coords, setCoords] = useState({ lat: 13.6288, lng: 79.4192 }); // Default to Tirupati Center
   const [gpsLoading, setGpsLoading] = useState(true);
+  
+  // NEW: State to track which landmark the user clicked to view on the map
+  const [activeLandmark, setActiveLandmark] = useState(null);
 
   // Setup & Hydration Fix
   useEffect(() => {
@@ -83,8 +86,13 @@ export default function TirupatiDashboard() {
     if (isMounted) fetchWeather();
   }, [coords, isMounted]);
 
-  const mapUrl = `http://googleusercontent.com/maps.google.com/maps?q=${coords.lat},${coords.lng}&z=14&output=embed`;
-  const externalMapUrl = `http://googleusercontent.com/maps.google.com/maps?q=${coords.lat},${coords.lng}`;
+  // THE FIX: Official Google Maps URLs dynamically switching between User GPS and Landmark GPS
+  const mapQuery = activeLandmark 
+    ? encodeURIComponent(`${activeLandmark.name}, Tirupati, Andhra Pradesh`) 
+    : `${coords.lat},${coords.lng}`;
+
+  const mapUrl = `https://maps.google.com/maps?q=${mapQuery}&z=14&output=embed`;
+  const externalMapUrl = `https://www.google.com/maps/search/?api=1&query=${mapQuery}`;
 
   if (!isMounted) return <div className="min-h-screen bg-[#020617]" />;
 
@@ -170,24 +178,40 @@ export default function TirupatiDashboard() {
             <h3 className="text-lg md:text-xl font-black mb-6 md:mb-8 flex items-center gap-3">
               <span className="w-1.5 h-5 md:h-6 bg-purple-500 rounded-full" /> Landmark Points
             </h3>
-            {/* Added scrollable container for mobile friendliness since list is long */}
+            
             <div className="space-y-5 md:space-y-6 overflow-y-auto max-h-[350px] md:max-h-[450px] pr-2">
               {TIRUPATI_LANDMARKS.map((spot, i) => {
                 const liveDistance = gpsLoading 
                   ? "CALCULATING..." 
                   : `${calculateDistance(coords.lat, coords.lng, spot.lat, spot.lng)}KM`;
 
+                const isActive = activeLandmark?.name === spot.name;
+
                 return (
-                  <div key={i} className="flex items-center gap-4 md:gap-5 group">
-                    <div className="w-10 h-10 md:w-12 md:h-12 rounded-lg md:rounded-xl bg-gradient-to-br from-gray-800 to-black border border-white/10 flex items-center justify-center font-black text-gray-600 group-hover:text-orange-400 transition-all text-xs md:text-base shrink-0">
-                      0{i+1}
+                  <div key={i} className="flex items-center justify-between gap-2 md:gap-4 group">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-10 h-10 md:w-12 md:h-12 rounded-lg md:rounded-xl border flex items-center justify-center font-black transition-all text-xs md:text-base shrink-0 ${isActive ? 'bg-orange-500 text-black border-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.3)]' : 'bg-gradient-to-br from-gray-800 to-black text-gray-600 border-white/10 group-hover:text-orange-400'}`}>
+                        0{i+1}
+                      </div>
+                      <div>
+                        <h4 className={`font-bold transition text-sm md:text-base ${isActive ? 'text-orange-400' : 'group-hover:text-white'}`}>{spot.name}</h4>
+                        <p className="text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-tighter mt-0.5">
+                          {spot.role} · <span className={gpsLoading ? "animate-pulse text-cyan-500" : "text-gray-400"}>{liveDistance}</span>
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-bold group-hover:text-white transition text-sm md:text-base">{spot.name}</h4>
-                      <p className="text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-tighter mt-0.5">
-                        {spot.role} · <span className={gpsLoading ? "animate-pulse text-cyan-500" : "text-orange-400"}>{liveDistance}</span>
-                      </p>
-                    </div>
+                    
+                    {/* LOCATE BUTTON */}
+                    <button
+                      onClick={() => setActiveLandmark(spot)}
+                      className={`shrink-0 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-[8px] md:text-[10px] font-black uppercase tracking-widest transition-colors ${
+                        isActive
+                          ? 'bg-orange-500 text-black shadow-lg'
+                          : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white border border-white/10'
+                      }`}
+                    >
+                      {isActive ? 'Active' : 'Locate'}
+                    </button>
                   </div>
                 );
               })}
@@ -208,17 +232,36 @@ export default function TirupatiDashboard() {
             ></iframe>
             
             <div className="absolute top-4 left-4 md:top-8 md:left-8 flex flex-col gap-2 md:gap-4">
-              <div className="bg-black/80 backdrop-blur-xl px-3 py-2 md:px-5 md:py-2.5 rounded-full border border-white/10 text-[8px] md:text-[10px] font-black tracking-[0.1em] md:tracking-[0.2em] uppercase w-fit">
-                <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-red-500 rounded-full inline-block mr-1.5 md:mr-2 animate-ping" /> Live GPS Position
+              <div className="bg-black/80 backdrop-blur-xl px-3 py-2 md:px-5 md:py-2.5 rounded-full border border-white/10 text-[8px] md:text-[10px] font-black tracking-[0.1em] md:tracking-[0.2em] uppercase w-fit text-white">
+                {activeLandmark ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-orange-500 rounded-full inline-block" /> Viewing: {activeLandmark.name}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-red-500 rounded-full inline-block animate-ping" /> Live GPS Position
+                  </span>
+                )}
               </div>
-              <a 
-                href={externalMapUrl} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="bg-orange-500 text-black px-3 py-2 md:px-5 md:py-2.5 rounded-full text-[8px] md:text-[10px] font-black tracking-[0.05em] md:tracking-[0.1em] uppercase hover:bg-orange-400 transition shadow-lg shadow-orange-500/20 text-center w-fit"
-              >
-                Open in Google Maps ↗
-              </a>
+              
+              <div className="flex gap-2">
+                {activeLandmark && (
+                  <button 
+                    onClick={() => setActiveLandmark(null)}
+                    className="bg-white/10 backdrop-blur-md border border-white/10 text-white px-3 py-2 md:px-5 md:py-2.5 rounded-full text-[8px] md:text-[10px] font-black tracking-[0.05em] md:tracking-[0.1em] uppercase hover:bg-white/20 transition w-fit"
+                  >
+                    Reset map
+                  </button>
+                )}
+                <a 
+                  href={externalMapUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="bg-orange-500 text-black px-3 py-2 md:px-5 md:py-2.5 rounded-full text-[8px] md:text-[10px] font-black tracking-[0.05em] md:tracking-[0.1em] uppercase hover:bg-orange-400 transition shadow-lg shadow-orange-500/20 text-center w-fit"
+                >
+                  Open Maps ↗
+                </a>
+              </div>
             </div>
           </div>
 
