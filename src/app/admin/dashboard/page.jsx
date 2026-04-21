@@ -14,9 +14,10 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
   
-  // Storage for both cities
+  // Storage for bookings & feedback
   const [velloreBookings, setVelloreBookings] = useState([]);
   const [tirupatiBookings, setTirupatiBookings] = useState([]);
+  const [feedbacks, setFeedbacks] = useState([]); // NEW: Feedback state
   
   // Dynamic IP State
   const [ipAddress, setIpAddress] = useState("Detecting Node...");
@@ -48,6 +49,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     let unsubVellore;
     let unsubTirupati;
+    let unsubFeedback; // NEW: Feedback unsubscriber
 
     const unsubAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
@@ -76,6 +78,12 @@ export default function AdminDashboard() {
             setTirupatiBookings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
           });
 
+          // 3. NEW: Sync Feedback Data
+          const qFeedback = query(collection(db, "feedback"), orderBy("timestamp", "desc"));
+          unsubFeedback = onSnapshot(qFeedback, (snapshot) => {
+            setFeedbacks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          });
+
         } else {
           await signOut(auth);
           router.push("/admin/login");
@@ -90,6 +98,7 @@ export default function AdminDashboard() {
       unsubAuth();
       if (unsubVellore) unsubVellore(); 
       if (unsubTirupati) unsubTirupati();
+      if (unsubFeedback) unsubFeedback();
     };
   }, [router]);
 
@@ -107,6 +116,17 @@ export default function AdminDashboard() {
       alert("Ticket successfully purged from node archive.");
     } catch (err) {
       alert("Purge failed. Check Firestore security rules.");
+    }
+  };
+
+  // NEW: Handle Feedback Deletion
+  const handleDeleteFeedback = async (id) => {
+    const confirmDelete = window.confirm("Dismiss this feedback permanently?");
+    if (!confirmDelete) return;
+    try {
+      await deleteDoc(doc(db, "feedback", id));
+    } catch (err) {
+      alert("Failed to delete feedback. Check Firestore rules.");
     }
   };
 
@@ -250,7 +270,6 @@ export default function AdminDashboard() {
           <StatCard title="Total Commuters" value={users.length} sub="Database Nodes" color="white" />
           <StatCard title="Vellore Active" value={velloreBookings.length} sub="Student Bookings" color="cyan" />
           <StatCard title="Tirupati Active" value={tirupatiBookings.length} sub="Vehicle Toll Passes" color="orange" />
-          {/* Extracting the first part (IP) and the rest (Location) dynamically */}
           <StatCard title="Active Node IP" value={ipAddress.split(' ')[0]} sub={ipAddress.split(' ').slice(1).join(' ') || "Global"} color="gray" />
         </div>
 
@@ -347,7 +366,7 @@ export default function AdminDashboard() {
         </section>
 
         {/* USER MANAGEMENT TABLE */}
-        <section className="bg-white/5 border border-white/10 rounded-2xl md:rounded-[2.5rem] p-4 md:p-8 overflow-hidden shadow-2xl">
+        <section className="bg-white/5 border border-white/10 rounded-2xl md:rounded-[2.5rem] p-4 md:p-8 overflow-hidden shadow-2xl mb-8 md:mb-10">
           <h2 className="text-xs md:text-sm font-black uppercase tracking-widest text-gray-400 mb-4 md:mb-8 italic">Global Commuter Database</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[500px]">
@@ -393,6 +412,55 @@ export default function AdminDashboard() {
             </table>
           </div>
         </section>
+
+        {/* NEW: FEEDBACK ARCHIVE TABLE */}
+        <section className="bg-white/5 border border-white/10 rounded-2xl md:rounded-[2.5rem] overflow-hidden shadow-2xl mb-8 md:mb-10">
+          <div className="bg-green-500/10 p-4 md:p-6 border-b border-white/5 flex justify-between items-center">
+            <h2 className="text-[10px] md:text-xs font-black text-green-400 uppercase tracking-widest italic">User Feedback & Telemetry</h2>
+          </div>
+          <div className="overflow-x-auto p-4 md:p-6">
+            <table className="w-full text-left text-[10px] min-w-[800px]">
+              <thead>
+                <tr className="text-gray-500 font-black border-b border-white/10 uppercase tracking-tighter italic whitespace-nowrap">
+                  <th className="pb-3 md:pb-4">Date Submited</th>
+                  <th className="pb-3 md:pb-4">Commuter & Feature</th>
+                  <th className="pb-3 md:pb-4 text-center">Ratings (Nav / Overall)</th>
+                  <th className="pb-3 md:pb-4 w-1/3">Comments</th>
+                  <th className="pb-3 md:pb-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {feedbacks.map((item) => (
+                  <tr key={item.id} className="group hover:bg-white/[0.02] transition">
+                    <td className="py-3 md:py-4 text-gray-400 whitespace-nowrap">
+                      {new Date(item.timestamp).toLocaleDateString()}<br/>{new Date(item.timestamp).toLocaleTimeString()}
+                    </td>
+                    <td className="py-3 md:py-4 whitespace-nowrap">
+                      <p className="text-green-400 font-black uppercase tracking-tighter">{item.name}</p>
+                      <p className="text-gray-600 text-[9px] italic">Uses: {item.mostUsedFeature}</p>
+                    </td>
+                    <td className="py-3 md:py-4 text-center whitespace-nowrap">
+                      <div className="flex flex-col items-center gap-1">
+                         <span className="text-[9px] text-gray-500">Nav: <span className="text-green-400">{'★'.repeat(item.navRating)}</span></span>
+                         <span className="text-[9px] text-gray-500">Overall: <span className="text-green-400">{'★'.repeat(item.overallRating)}</span></span>
+                      </div>
+                    </td>
+                    <td className="py-3 md:py-4 text-gray-300">
+                      <div className="max-w-xs md:max-w-md line-clamp-2" title={item.comments}>
+                        {item.comments}
+                      </div>
+                    </td>
+                    <td className="py-3 md:py-4 text-right whitespace-nowrap">
+                      <button onClick={() => handleDeleteFeedback(item.id)} className="bg-red-500/10 border border-red-500/20 text-red-500 px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-[8px] font-black uppercase hover:bg-red-500 hover:text-white transition">Dismiss</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {feedbacks.length === 0 && <p className="py-8 md:py-10 text-center text-gray-700 text-[10px] md:text-xs font-black tracking-widest uppercase">No Feedback Available</p>}
+          </div>
+        </section>
+
       </div>
     </div>
   );
